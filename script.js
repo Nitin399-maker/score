@@ -995,41 +995,6 @@ function renderPlayerDashboard(playerId) {
     const dashboard = document.getElementById('playerDashboard');
     dashboard.innerHTML = `
     <div class="card mb-3">
-        <div class="card-body">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h4>${player.name}</h4>
-            <button class="btn btn-sm btn-outline-secondary d-none" onclick="openEditFactsModal(${player.id})">
-                <i class="bi bi-pencil me-1"></i> Edit Facts
-            </button>
-
-        </div>
-        <div class="row">
-            <div class="col-md-4 text-center">
-            <div class="score-circle ${scoreInfo.class}">${player.score}</div>
-            <h5 class="mt-3"><span class="badge bg-${scoreInfo.badge}">${scoreInfo.label}</span></h5>
-            <div class="progress mt-2" style="height: 25px;">
-                <div class="progress-bar bg-${scoreInfo.badge}" role="progressbar" style="width: ${player.score}%">${player.score}%</div>
-            </div>
-            </div>
-            <div class="col-md-8">
-            <h6>Score Explanation</h6>
-            <ul class="list-unstyled">
-                ${explanation.length > 0 ? explanation.map(e => `<li><i class="bi bi-dash-circle text-danger me-1"></i> <strong>-${e.value.toFixed(1)} points:</strong> ${e.reason}</li>`).join('') : '<li class="text-muted">No deductions</li>'}
-            </ul>
-            ${player.scoreBreakdown ? `
-                <div class="mt-3">
-                    <small class="text-muted">
-                        <strong>Total Penalty:</strong> ${player.scoreBreakdown.totalPenalty.toFixed(1)} points<br>
-                        <strong>Recent Boost:</strong> ${player.scoreBreakdown.recentBoostMultiplier}x
-                    </small>
-                </div>
-            ` : ''}
-            </div>
-        </div>
-        </div>
-    </div>
-
-    <div class="card mb-3">
         <div class="card-header"><h5>Critical Information</h5></div>
         <div class="card-body">
         <h6>Injuries</h6>
@@ -1254,6 +1219,41 @@ function renderPlayerDashboard(playerId) {
                 </div>
             `;
         })()}
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4>${player.name}</h4>
+            <button class="btn btn-sm btn-outline-secondary d-none" onclick="openEditFactsModal(${player.id})">
+                <i class="bi bi-pencil me-1"></i> Edit Facts
+            </button>
+
+        </div>
+        <div class="row">
+            <div class="col-md-4 text-center">
+            <div class="score-circle ${scoreInfo.class}">${player.score}</div>
+            <h5 class="mt-3"><span class="badge bg-${scoreInfo.badge}">${scoreInfo.label}</span></h5>
+            <div class="progress mt-2" style="height: 25px;">
+                <div class="progress-bar bg-${scoreInfo.badge}" role="progressbar" style="width: ${player.score}%">${player.score}%</div>
+            </div>
+            </div>
+            <div class="col-md-8">
+            <h6>Score Explanation</h6>
+            <ul class="list-unstyled">
+                ${explanation.length > 0 ? explanation.map(e => `<li><i class="bi bi-dash-circle text-danger me-1"></i> <strong>-${e.value.toFixed(1)} points:</strong> ${e.reason}</li>`).join('') : '<li class="text-muted">No deductions</li>'}
+            </ul>
+            ${player.scoreBreakdown ? `
+                <div class="mt-3">
+                    <small class="text-muted">
+                        <strong>Total Penalty:</strong> ${player.scoreBreakdown.totalPenalty.toFixed(1)} points<br>
+                        <strong>Recent Boost:</strong> ${player.scoreBreakdown.recentBoostMultiplier}x
+                    </small>
+                </div>
+            ` : ''}
+            </div>
+        </div>
         </div>
     </div>
     `;
