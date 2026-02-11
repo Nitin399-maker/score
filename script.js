@@ -501,11 +501,20 @@ ${combinedDocuments}
 
 Analyze ALL documents above and extract comprehensive information. Combine and merge data from all documents to create a complete medical profile.
 
+CRITICAL INSTRUCTIONS FOR COUNTS:
+- Count ONLY the actual entries you create in the arrays
+- surgeriesTotal MUST equal the exact number of items in the "surgeries" array
+- concussionsTotal MUST equal the exact number of items in the "neuro.concussions" array
+- majorInjuriesTotal MUST equal the count of injuries with severity="Major" in the "injuries" array
+- moderateInjuriesTotal MUST equal the count of injuries with severity="Moderate" in the "injuries" array
+- minorInjuriesTotal MUST equal the count of injuries with severity="Minor" in the "injuries" array
+- missedGamesTotal should be the sum of all missedGames from the "availability.missedGamesBySeason" array
+- DO NOT inflate counts - they must match the actual array lengths
+
 Extract and return ONLY a valid JSON object with the following structure (no markdown, no code blocks, just raw JSON):
 {
   "player": {
     "name": "string",
-    "position": "QB|WR|RB|TE|OL|DL|LB|CB|S|K|P|LS|Unknown",
     "draftYear": 2022,
     "handedness": "L|R|Unknown"
   },
@@ -650,7 +659,9 @@ Important:
 - Return ONLY the JSON object, no additional text or formatting
 - Ensure all arrays contain unique entries (no duplicates)
 - Use the exact enum values specified (e.g., "Major" not "major")
-- Fill in all required fields with best estimates from documents`;
+- Fill in all required fields with best estimates from documents
+- CRITICAL: Ensure summaryCounts values match the actual array lengths (e.g., surgeriesTotal = surgeries.length)
+- Set flags to true ONLY when there is clear evidence in the imaging findings or medical history`;
 
     try {
         const response = await fetch('https://llmfoundry.straivedemo.com/openrouter/v1/chat/completions', {
@@ -769,7 +780,6 @@ document.getElementById('uploadFilesBtn').addEventListener('click', async () => 
             player = {
                 id: players.length + 1,
                 name: playerName,
-                pos: analysis.player?.position || 'Unknown',
                 draftYear: analysis.player?.draftYear || 2022,
                 handedness: analysis.player?.handedness || 'Unknown',
                 documents: [],
@@ -780,11 +790,39 @@ document.getElementById('uploadFilesBtn').addEventListener('click', async () => 
             players.push(player);
         } else {
             // Replace existing player data with new comprehensive analysis
-            player.pos = analysis.player?.position || player.pos;
             player.draftYear = analysis.player?.draftYear || player.draftYear;
             player.handedness = analysis.player?.handedness || player.handedness;
             player.facts = analysis;
         }
+        
+        // Validate and fix counts to match actual array lengths
+        if (!player.facts.summaryCounts) player.facts.summaryCounts = {};
+        player.facts.summaryCounts.surgeriesTotal = (player.facts.surgeries || []).length;
+        player.facts.summaryCounts.concussionsTotal = (player.facts.neuro?.concussions || []).length;
+        player.facts.summaryCounts.cervicalNeurologicEventsTotal = (player.facts.neuro?.cervicalEvents || []).length;
+        
+        const injuries = player.facts.injuries || [];
+        player.facts.summaryCounts.majorInjuriesTotal = injuries.filter(i => i.severity === 'Major').length;
+        player.facts.summaryCounts.moderateInjuriesTotal = injuries.filter(i => i.severity === 'Moderate').length;
+        player.facts.summaryCounts.minorInjuriesTotal = injuries.filter(i => i.severity === 'Minor').length;
+        
+        // Calculate major/non-major joint surgeries
+        const surgeries = player.facts.surgeries || [];
+        player.facts.summaryCounts.surgeriesMajorJoint = surgeries.filter(s => s.majorJoint).length;
+        player.facts.summaryCounts.surgeriesNonMajorJoint = surgeries.filter(s => !s.majorJoint).length;
+        
+        // Validate flags based on actual imaging findings
+        if (!player.facts.flags) player.facts.flags = {};
+        const imgs = player.facts.imagingFindings || [];
+        player.facts.flags.cartilageDegeneration = imgs.some(img => 
+            img.structuredFindings?.cartilageDamage && 
+            !['None', 'Unknown'].includes(img.structuredFindings.cartilageDamage)
+        );
+        player.facts.flags.looseBodies = imgs.some(img => img.structuredFindings?.looseBodies === true);
+        player.facts.flags.osteoarthritisOrArthrosis = imgs.some(img => 
+            img.structuredFindings?.degenerativeChange && 
+            ['Moderate', 'Severe'].includes(img.structuredFindings.degenerativeChange)
+        ) || imgs.some(img => img.structuredFindings?.postTraumaticArthritis === true);
 
         // Add all documents to player
         for (const docData of documentsData) {
@@ -825,7 +863,7 @@ function renderPlayerSelector() {
     players.forEach(p => {
     const opt = document.createElement('option');
     opt.value = p.id;
-    opt.textContent = `${p.name} (${p.pos})`;
+    opt.textContent = p.name;
     selector.appendChild(opt);
     });
 }
@@ -959,7 +997,7 @@ function renderPlayerDashboard(playerId) {
     <div class="card mb-3">
         <div class="card-body">
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <h4>${player.name} <span class="badge bg-secondary">${player.pos}</span></h4>
+            <h4>${player.name}</h4>
             <button class="btn btn-sm btn-outline-secondary d-none" onclick="openEditFactsModal(${player.id})">
                 <i class="bi bi-pencil me-1"></i> Edit Facts
             </button>
@@ -1349,11 +1387,52 @@ function renderCompareCheckboxes() {
     });
 }
 
+let compareTableSort = { column: 'score', direction: 'desc' };
+
 function renderCompareTable() {
     const tbody = document.getElementById('compareTableBody');
     tbody.innerHTML = '';
 
-    const selected = players.filter(p => selectedComparePlayers.has(p.id));
+    let selected = players.filter(p => selectedComparePlayers.has(p.id));
+    
+    // Sort the selected players
+    selected.sort((a, b) => {
+        let aVal, bVal;
+        
+        switch(compareTableSort.column) {
+            case 'name':
+                aVal = a.name.toLowerCase();
+                bVal = b.name.toLowerCase();
+                break;
+            case 'draftYear':
+                aVal = a.draftYear || 0;
+                bVal = b.draftYear || 0;
+                break;
+            case 'surgeries':
+                aVal = (a.facts?.summaryCounts?.surgeriesTotal || 0);
+                bVal = (b.facts?.summaryCounts?.surgeriesTotal || 0);
+                break;
+            case 'recurrence':
+                aVal = (a.facts?.summaryCounts?.recurrenceTotal || 0);
+                bVal = (b.facts?.summaryCounts?.recurrenceTotal || 0);
+                break;
+            case 'missedGames':
+                aVal = (a.facts?.summaryCounts?.missedGamesTotal || 0);
+                bVal = (b.facts?.summaryCounts?.missedGamesTotal || 0);
+                break;
+            case 'score':
+                aVal = a.score || 0;
+                bVal = b.score || 0;
+                break;
+            default:
+                return 0;
+        }
+        
+        if (aVal < bVal) return compareTableSort.direction === 'asc' ? -1 : 1;
+        if (aVal > bVal) return compareTableSort.direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+    
     selected.forEach(p => {
         // Ensure score is valid
         if (p.score === undefined || p.score === null || isNaN(p.score)) {
@@ -1366,20 +1445,25 @@ function renderCompareTable() {
         const counts = p.facts?.summaryCounts || {};
         const flags = p.facts?.flags || {};
         
+        // Build imaging flags list
+        const imagingFlags = [];
+        if (flags.cartilageDegeneration) imagingFlags.push('Cartilage');
+        if (flags.looseBodies) imagingFlags.push('Loose Bodies');
+        if (flags.osteoarthritisOrArthrosis) imagingFlags.push('Arthritis');
+        if (flags.fractureNonunionOrDelayedUnion) imagingFlags.push('Nonunion');
+        if (flags.avascularNecrosisConcern) imagingFlags.push('AVN');
+        if (flags.hardwareFailureOrBrokenImplant) imagingFlags.push('Hardware');
+        if ((counts.cervicalNeurologicEventsTotal || 0) > 0) imagingFlags.push('Cervical');
+        
         const row = document.createElement('tr');
         row.innerHTML = `
             <td><strong>${p.name}</strong></td>
-            <td>${p.pos}</td>
-            <td>${p.draftYear}</td>
+            <td>${p.draftYear || 'N/A'}</td>
             <td>${counts.surgeriesTotal || 0}</td>
             <td>${(counts.concussionsTotal || 0) > 0 ? '<span class="badge bg-warning">Yes</span>' : '<span class="badge bg-success">No</span>'}</td>
             <td>${counts.recurrenceTotal || 0}</td>
             <td>
-            ${flags.cartilageDegeneration ? '<span class="badge bg-danger me-1">Cartilage</span>' : ''}
-            ${flags.looseBodies ? '<span class="badge bg-danger me-1">Loose Bodies</span>' : ''}
-            ${flags.osteoarthritisOrArthrosis ? '<span class="badge bg-danger me-1">Arthritis</span>' : ''}
-            ${(counts.cervicalNeurologicEventsTotal || 0) > 0 ? '<span class="badge bg-danger me-1">Cervical</span>' : ''}
-            ${!flags.cartilageDegeneration && !flags.looseBodies && !flags.osteoarthritisOrArthrosis && !(counts.cervicalNeurologicEventsTotal > 0) ? '<span class="text-muted">None</span>' : ''}
+            ${imagingFlags.length > 0 ? imagingFlags.map(flag => `<span class="badge bg-danger me-1">${flag}</span>`).join('') : '<span class="text-muted">None</span>'}
             </td>
             <td>${counts.missedGamesTotal || 0}</td>
             <td><span class="badge bg-${scoreInfo.badge} fs-6">${isNaN(p.score) ? 'N/A' : p.score}</span></td>
@@ -1388,28 +1472,27 @@ function renderCompareTable() {
     });
 }
 
-// Sorting
-document.querySelectorAll('.sortable').forEach(th => {
-    th.style.cursor = 'pointer';
-    th.addEventListener('click', () => {
-    const sortKey = th.dataset.sort;
-    sortCompareTable(sortKey);
-    });
-});
-
-function sortCompareTable(key) {
-    const selected = Array.from(selectedComparePlayers);
-    selected.sort((a, b) => {
-    const pA = players.find(p => p.id === a);
-    const pB = players.find(p => p.id === b);
-    if (key === 'score') return pB.score - pA.score;
-    if (key === 'surgeries') return pB.facts.surgeries - pA.facts.surgeries;
-    if (key === 'recurrence') return pB.facts.recurrenceCount - pA.facts.recurrenceCount;
-    if (key === 'missedGames') return pB.facts.missedGames - pA.facts.missedGames;
-    return 0;
-    });
-    selectedComparePlayers = new Set(selected);
+function sortCompareTableBy(column) {
+    if (compareTableSort.column === column) {
+        compareTableSort.direction = compareTableSort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        compareTableSort.column = column;
+        compareTableSort.direction = 'desc';
+    }
     renderCompareTable();
+}
+
+// Sorting for compare table - will be initialized after DOM loads
+if (typeof document !== 'undefined') {
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.sortable').forEach(th => {
+            th.style.cursor = 'pointer';
+            th.addEventListener('click', () => {
+                const sortKey = th.dataset.sort;
+                sortCompareTableBy(sortKey);
+            });
+        });
+    });
 }
 
 // Export
@@ -1442,17 +1525,19 @@ document.getElementById('exportJSON').addEventListener('click', (e) => {
 document.getElementById('exportCSV').addEventListener('click', (e) => {
     e.preventDefault();
     const selected = players.filter(p => selectedComparePlayers.has(p.id));
-    let csv = 'Name,Position,Draft Year,Surgeries,Concussion History,Recurring Injuries,Major Imaging Flags,Missed Games,Medical Score\n';
+    let csv = 'Name,Draft Year,Surgeries,Concussion History,Recurring Injuries,Major Imaging Flags,Missed Games,Medical Score\n';
     selected.forEach(p => {
         const counts = p.facts.summaryCounts || {};
         const flags = p.facts.flags || {};
-        const flagsList = [
-            flags.cartilageDegeneration ? 'Cartilage' : null,
-            flags.looseBodies ? 'Loose Bodies' : null,
-            flags.osteoarthritisOrArthrosis ? 'Arthritis' : null,
-            (counts.cervicalNeurologicEventsTotal || 0) > 0 ? 'Cervical' : null
-        ].filter(Boolean).join('; ');
-        csv += `${p.name},${p.pos},${p.draftYear},${counts.surgeriesTotal || 0},${(counts.concussionsTotal || 0) > 0 ? 'Yes' : 'No'},${counts.recurrenceTotal || 0},"${flagsList}",${counts.missedGamesTotal || 0},${p.score}\n`;
+        const imagingFlags = [];
+        if (flags.cartilageDegeneration) imagingFlags.push('Cartilage');
+        if (flags.looseBodies) imagingFlags.push('Loose Bodies');
+        if (flags.osteoarthritisOrArthrosis) imagingFlags.push('Arthritis');
+        if (flags.fractureNonunionOrDelayedUnion) imagingFlags.push('Nonunion');
+        if (flags.avascularNecrosisConcern) imagingFlags.push('AVN');
+        if ((counts.cervicalNeurologicEventsTotal || 0) > 0) imagingFlags.push('Cervical');
+        const flagsList = imagingFlags.join('; ');
+        csv += `${p.name},${p.draftYear || 'N/A'},${counts.surgeriesTotal || 0},${(counts.concussionsTotal || 0) > 0 ? 'Yes' : 'No'},${counts.recurrenceTotal || 0},"${flagsList}",${counts.missedGamesTotal || 0},${p.score}\n`;
     });
     downloadFile('comparison.csv', csv);
 });
