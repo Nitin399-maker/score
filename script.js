@@ -596,7 +596,7 @@ Important:
                 'Authorization': `Bearer ${apiKey}`
             },
             body: JSON.stringify({
-                model: 'claude-4.5-sonnet',
+                model: 'anthropic/claude-sonnet-4.5',
                 messages: [
                     {
                         role: 'system',
