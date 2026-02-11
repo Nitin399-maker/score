@@ -1369,7 +1369,7 @@ function renderCompareCheckboxes() {
     div.className = 'form-check';
     div.innerHTML = `
         <input class="form-check-input compare-checkbox" type="checkbox" value="${p.id}" id="cmp${p.id}">
-        <label class="form-check-label" for="cmp${p.id}">${p.name} (${p.pos})</label>
+        <label class="form-check-label" for="cmp${p.id}">${p.name}</label>
     `;
     container.appendChild(div);
     });
