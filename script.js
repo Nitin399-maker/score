@@ -43,101 +43,101 @@ function decay(monthsAgo, halfLife) {
 
 function sevWeight(sev) {
     switch ((sev || "").toLowerCase()) {
-        case "major": return 9;
-        case "moderate": return 5;
-        case "minor": return 2;
-        default: return 3;
+        case "major": return 4.5;
+        case "moderate": return 2.5;
+        case "minor": return 1;
+        default: return 1.5;
     }
 }
 
 function typeMultiplier(type) {
     const t = (type || "").toLowerCase();
-    if (t === "fracture") return 1.5;
-    if (t === "dislocation" || t === "subluxation") return 1.4;
-    if (t === "tear") return 1.3;
+    if (t === "fracture") return 1.3;
+    if (t === "dislocation" || t === "subluxation") return 1.25;
+    if (t === "tear") return 1.2;
     if (t === "sprain") return 1.05;
     if (t === "strain") return 1.0;
-    if (t === "tendinopathy") return 0.9;
-    if (t === "contusion") return 0.6;
+    if (t === "tendinopathy") return 0.95;
+    if (t === "contusion") return 0.8;
     return 1.0;
 }
 
 function procedureMultiplier(cat) {
     const c = (cat || "").toLowerCase();
-    if (c === "reconstruction") return 1.25;
-    if (c === "orif") return 1.35;
-    if (c === "repair") return 1.15;
+    if (c === "reconstruction") return 1.2;
+    if (c === "orif") return 1.25;
+    if (c === "repair") return 1.1;
     if (c === "meniscectomy") return 1.0;
-    if (c === "debridement") return 0.85;
-    if (c === "tenex") return 0.75;
+    if (c === "debridement") return 0.9;
+    if (c === "tenex") return 0.85;
     return 1.0;
 }
 
 function residualPenalty(level) {
     switch ((level || "").toLowerCase()) {
         case "none": return 0;
-        case "mild": return 2;
-        case "moderate": return 5;
-        case "severe": return 8;
-        default: return 2;
+        case "mild": return 1;
+        case "moderate": return 2.5;
+        case "severe": return 4;
+        default: return 1;
     }
 }
 
 function limitationPenalty(lim) {
     switch ((lim || "").toLowerCase()) {
         case "none": return 0;
-        case "weightroommods": return 2;
-        case "brace": return 3;
-        case "snapcount": return 4;
-        default: return 1;
+        case "weightroommods": return 1;
+        case "brace": return 1.5;
+        case "snapcount": return 2;
+        default: return 0.5;
     }
 }
 
 function cartilagePenalty(level) {
     const v = (level || "").toLowerCase();
-    if (v === "fullthickness") return 10;
-    if (v === "severe") return 7;
-    if (v === "moderate") return 4;
-    if (v === "mild") return 2;
+    if (v === "fullthickness") return 5;
+    if (v === "severe") return 3.5;
+    if (v === "moderate") return 2;
+    if (v === "mild") return 1;
     return 0;
 }
 
 function degenerativePenalty(level) {
     const v = (level || "").toLowerCase();
-    if (v === "severe") return 7;
-    if (v === "moderate") return 4;
-    if (v === "mild") return 2;
+    if (v === "severe") return 3.5;
+    if (v === "moderate") return 2;
+    if (v === "mild") return 1;
     return 0;
 }
 
 function labrumMeniscusPenalty(status) {
     const s = (status || "").toLowerCase();
-    if (s === "confirmedretear") return 8;
-    if (s === "possibleretear") return 5;
+    if (s === "confirmedretear") return 4;
+    if (s === "possibleretear") return 2.5;
     return 0;
 }
 
 function tendonPenalty(status) {
     const s = (status || "").toLowerCase();
-    if (s === "fulltear") return 9;
-    if (s === "partialtear") return 6;
-    if (s === "tendinosis") return 2;
+    if (s === "fulltear") return 4.5;
+    if (s === "partialtear") return 3;
+    if (s === "tendinosis") return 1;
     return 0;
 }
 
 function ligamentPenalty(status) {
     const s = (status || "").toLowerCase();
-    if (s === "tear") return 8;
-    if (s === "spraingrade2") return 4;
-    if (s === "sprainlowgrade") return 2;
+    if (s === "tear") return 4;
+    if (s === "spraingrade2") return 2;
+    if (s === "sprainlowgrade") return 1;
     return 0;
 }
 
 function effusionPenalty(level) {
     const e = (level || "").toLowerCase();
-    if (e === "large") return 4;
-    if (e === "moderate") return 2;
-    if (e === "trace") return 1;
+    if (e === "large") return 2;
+    if (e === "moderate") return 1;
+    if (e === "trace") return 0.5;
     return 0;
 }
 
@@ -214,10 +214,10 @@ function calculateMSI(facts, asOfDateStr) {
         const monthsAgo = sx?.date ? monthsBetween(sx.date, asOf) : 60;
         const hl = sx?.majorJoint ? 72 : 60;
 
-        const base = sx?.majorJoint ? 12 : 8;
+        const base = sx?.majorJoint ? 6 : 4;
         const proc = procedureMultiplier(sx?.procedureCategory);
 
-        const revision = sx?.revision ? 6 : 0;
+        const revision = sx?.revision ? 3 : 0;
         const residual = residualPenalty(sx?.outcome?.residualSymptoms);
         const limitation = limitationPenalty(sx?.outcome?.currentLimitation);
 
@@ -235,18 +235,18 @@ function calculateMSI(facts, asOfDateStr) {
 
         const sf = img?.structuredFindings || {};
         const structural =
-            (sf.nonunionOrDelayedUnion ? 10 : 0) +
-            (sf.avascularNecrosisConcern ? 10 : 0) +
-            (sf.hardwareComplication && sf.hardwareComplication !== "None" ? 6 : 0) +
-            (sf.looseBodies ? 4 : 0) +
-            (sf.stressReactionOrFracture ? 6 : 0);
+            (sf.nonunionOrDelayedUnion ? 5 : 0) +
+            (sf.avascularNecrosisConcern ? 5 : 0) +
+            (sf.hardwareComplication && sf.hardwareComplication !== "None" ? 3 : 0) +
+            (sf.looseBodies ? 2 : 0) +
+            (sf.stressReactionOrFracture ? 3 : 0);
 
         const structuralPart = structural * decay(monthsAgo, 84);
 
         const degenerativePart =
             (degenerativePenalty(sf.degenerativeChange) +
              cartilagePenalty(sf.cartilageDamage) +
-             (sf.postTraumaticArthritis ? 6 : 0)) * decay(monthsAgo, 120);
+             (sf.postTraumaticArthritis ? 3 : 0)) * decay(monthsAgo, 120);
 
         const softTissuePart =
             (labrumMeniscusPenalty(sf.labrumMeniscusStatus) +
@@ -266,22 +266,22 @@ function calculateMSI(facts, asOfDateStr) {
 
     let redFlagPenalty = 0;
 
-    if (flags.fractureNonunionOrDelayedUnion) redFlagPenalty += 12;
-    if (flags.avascularNecrosisConcern) redFlagPenalty += 12;
-    if (flags.hardwareFailureOrBrokenImplant) redFlagPenalty += 10;
+    if (flags.fractureNonunionOrDelayedUnion) redFlagPenalty += 6;
+    if (flags.avascularNecrosisConcern) redFlagPenalty += 6;
+    if (flags.hardwareFailureOrBrokenImplant) redFlagPenalty += 5;
 
-    if (flags.osteoarthritisOrArthrosis) redFlagPenalty += 8;
-    if (flags.cartilageDegeneration) redFlagPenalty += 8;
-    if (flags.looseBodies) redFlagPenalty += 5;
+    if (flags.osteoarthritisOrArthrosis) redFlagPenalty += 4;
+    if (flags.cartilageDegeneration) redFlagPenalty += 4;
+    if (flags.looseBodies) redFlagPenalty += 2.5;
 
-    if (flags.stressFractureHistory) redFlagPenalty += 6;
+    if (flags.stressFractureHistory) redFlagPenalty += 3;
 
-    if (flags.recurrentInstability) redFlagPenalty += 7;
-    if (flags.recurrentMuscleStrain) redFlagPenalty += 4;
+    if (flags.recurrentInstability) redFlagPenalty += 3.5;
+    if (flags.recurrentMuscleStrain) redFlagPenalty += 2;
 
-    redFlagPenalty += 3 * (scoringInputs.structuralRedFlagCount || 0);
-    redFlagPenalty += 1.25 * (scoringInputs.degenerativeBurdenScore || 0);
-    redFlagPenalty += 1.5 * (scoringInputs.instabilityBurdenScore || 0);
+    redFlagPenalty += 1.5 * (scoringInputs.structuralRedFlagCount || 0);
+    redFlagPenalty += 0.75 * (scoringInputs.degenerativeBurdenScore || 0);
+    redFlagPenalty += 1 * (scoringInputs.instabilityBurdenScore || 0);
 
     const avail = facts?.availability || {};
     const bySeason = avail?.missedGamesBySeason || [];
@@ -298,16 +298,16 @@ function calculateMSI(facts, asOfDateStr) {
     }
 
     const availabilityPenalty =
-        2.2 * Math.min(missedGamesWeighted, 8) +
-        0.9 * Math.max(missedGamesWeighted - 8, 0) +
-        0.8 * (avail.missedPracticeWeeksTotal || 0) +
-        0.4 * (avail.limitedParticipationWeeksTotal || 0);
+        1.5 * Math.min(missedGamesWeighted, 8) +
+        0.6 * Math.max(missedGamesWeighted - 8, 0) +
+        0.5 * (avail.missedPracticeWeeksTotal || 0) +
+        0.25 * (avail.limitedParticipationWeeksTotal || 0);
 
     const restr = (avail.currentRestrictions || "Unknown").toLowerCase();
     let restrictionPenalty = 0;
-    if (restr === "limited") restrictionPenalty = 4;
-    if (restr === "nocombine") restrictionPenalty = 7;
-    if (restr === "prodayonly") restrictionPenalty = 5;
+    if (restr === "limited") restrictionPenalty = 2;
+    if (restr === "nocombine") restrictionPenalty = 3.5;
+    if (restr === "prodayonly") restrictionPenalty = 2.5;
 
     const neuro = facts?.neuro || {};
     const concs = neuro?.concussions || [];
@@ -317,27 +317,27 @@ function calculateMSI(facts, asOfDateStr) {
 
     for (const c of concs) {
         const monthsAgo = c?.date ? monthsBetween(c.date, asOf) : 36;
-        let p = 6 * decay(monthsAgo, 36);
+        let p = 3 * decay(monthsAgo, 36);
 
-        if (c.lossOfConsciousness) p += 3 * decay(monthsAgo, 60);
-        if (c.prolongedSymptoms) p += 4 * decay(monthsAgo, 60);
+        if (c.lossOfConsciousness) p += 1.5 * decay(monthsAgo, 60);
+        if (c.prolongedSymptoms) p += 2 * decay(monthsAgo, 60);
 
-        p += 1.5 * (c.missedGames || 0) * decay(monthsAgo, 48);
+        p += 0.75 * (c.missedGames || 0) * decay(monthsAgo, 48);
 
         neuroPenalty += p;
     }
 
     const concCount = counts.concussionsTotal || concs.length;
-    if (concCount >= 2) neuroPenalty += 5;
-    if (concCount >= 3) neuroPenalty += 6;
+    if (concCount >= 2) neuroPenalty += 2.5;
+    if (concCount >= 3) neuroPenalty += 3;
 
     for (const e of cerv) {
         const monthsAgo = e?.date ? monthsBetween(e.date, asOf) : 36;
-        let p = 6 * decay(monthsAgo, 48);
+        let p = 3 * decay(monthsAgo, 48);
 
-        if (e.recurrent) p += 4 * decay(monthsAgo, 72);
-        if (e.currentSymptoms) p += 6;
-        p += 1.5 * (e.timeLostGames || 0) * decay(monthsAgo, 48);
+        if (e.recurrent) p += 2 * decay(monthsAgo, 72);
+        if (e.currentSymptoms) p += 3;
+        p += 0.75 * (e.timeLostGames || 0) * decay(monthsAgo, 48);
 
         neuroPenalty += p;
     }
@@ -345,7 +345,7 @@ function calculateMSI(facts, asOfDateStr) {
     const mLast = scoringInputs.monthsSinceLastSignificantEvent ?? null;
     const monthsSinceLast = (mLast != null) ? mLast : 18;
 
-    const recentBoost = clamp((12 - monthsSinceLast) / 12, 0, 1) * 0.35;
+    const recentBoost = clamp((12 - monthsSinceLast) / 12, 0, 1) * 0.25;
 
     const totalPenaltyBase =
         orthoPenalty +
