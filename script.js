@@ -13,11 +13,8 @@ function formatDate(dateStr) {
         
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         const day = date.getDate();
-        const suffix = day === 1 || day === 21 || day === 31 ? 'st' : 
-                      day === 2 || day === 22 ? 'nd' : 
-                      day === 3 || day === 23 ? 'rd' : 'th';
         
-        return `${months[date.getMonth()]} ${day}${suffix}, ${date.getFullYear()}`;
+        return `${months[date.getMonth()]} ${day}, ${date.getFullYear()}`;
     } catch (e) {
         return dateStr;
     }
@@ -431,7 +428,7 @@ async function analyzeMedicalDocuments(documentsData, providedPlayerName = '') {
 
     const playerNameHint = providedPlayerName ? `Player Name (provided): ${providedPlayerName}` : 'Player Name: Extract from documents';
 
-    const prompt = `You are a medical document analyzer for sports players. Analyze ALL the following medical documents for a single player and extract comprehensive medical information by combining data from all documents.
+    const prompt = `You are a medical document analyzer for sports players. Analyze ALL the following medical documents Given by NFL for a single player and extract comprehensive medical information by combining data from all documents.
 
 ${playerNameHint}
 
@@ -592,14 +589,14 @@ Important:
 - Fill in all required fields with best estimates from documents`;
 
     try {
-        const response = await fetch('https://llmfoundry.straivedemo.com/openai/v1/chat/completions', {
+        const response = await fetch('https://llmfoundry.straivedemo.com/openrouter/v1/chat/completions', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`
             },
             body: JSON.stringify({
-                model: 'gpt-4.1-mini',
+                model: 'claude-4.5-sonnet',
                 messages: [
                     {
                         role: 'system',
@@ -708,7 +705,6 @@ document.getElementById('uploadFilesBtn').addEventListener('click', async () => 
             player = {
                 id: players.length + 1,
                 name: playerName,
-                pos: analysis.player?.position || 'Unknown',
                 draftYear: analysis.player?.draftYear || 2022,
                 handedness: analysis.player?.handedness || 'Unknown',
                 documents: [],
@@ -747,7 +743,7 @@ document.getElementById('uploadFilesBtn').addEventListener('click', async () => 
             progressBar.style.width = '0%';
         }, 2000);
         
-        showToast(`${files.length} document(s) analyzed successfully for ${playerName}!`);
+        showToast(`document(s) analyzed successfully for ${playerName}!`);
 
     } catch (error) {
         console.error('Upload error:', error);
@@ -787,15 +783,95 @@ function renderPlayerDashboard(playerId) {
     const scoreInfo = getScoreLabel(player.score);
     const explanation = getScoreExplanation(player.scoreBreakdown);
 
+    // Initialize sort state if not exists
+    if (!player.sortState) {
+        player.sortState = {
+            injuries: { column: 'date', direction: 'desc' },
+            surgeries: { column: 'date', direction: 'desc' }
+        };
+    }
+
+    // Sort injuries
+    const sortedInjuries = [...(player.facts.injuries || [])].sort((a, b) => {
+        const state = player.sortState.injuries;
+        let aVal, bVal;
+        
+        switch(state.column) {
+            case 'date':
+                aVal = new Date(a.date || '1900-01-01');
+                bVal = new Date(b.date || '1900-01-01');
+                break;
+            case 'injury':
+                aVal = (a.injuryName || 'Unknown').toLowerCase();
+                bVal = (b.injuryName || 'Unknown').toLowerCase();
+                break;
+            case 'bodyRegion':
+                aVal = (a.bodyRegion || 'Unknown').toLowerCase();
+                bVal = (b.bodyRegion || 'Unknown').toLowerCase();
+                break;
+            case 'severity':
+                const sevOrder = { 'Major': 3, 'Moderate': 2, 'Minor': 1, 'Unknown': 0 };
+                aVal = sevOrder[a.severity] || 0;
+                bVal = sevOrder[b.severity] || 0;
+                break;
+            case 'status':
+                aVal = (a.currentStatus || 'Unknown').toLowerCase();
+                bVal = (b.currentStatus || 'Unknown').toLowerCase();
+                break;
+            default:
+                return 0;
+        }
+        
+        if (aVal < bVal) return state.direction === 'asc' ? -1 : 1;
+        if (aVal > bVal) return state.direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    // Sort surgeries
+    const sortedSurgeries = [...(player.facts.surgeries || [])].sort((a, b) => {
+        const state = player.sortState.surgeries;
+        let aVal, bVal;
+        
+        switch(state.column) {
+            case 'date':
+                aVal = new Date(a.date || '1900-01-01');
+                bVal = new Date(b.date || '1900-01-01');
+                break;
+            case 'procedure':
+                aVal = (a.procedure || 'Unknown').toLowerCase();
+                bVal = (b.procedure || 'Unknown').toLowerCase();
+                break;
+            case 'bodyRegion':
+                aVal = (a.bodyRegion || 'Unknown').toLowerCase();
+                bVal = (b.bodyRegion || 'Unknown').toLowerCase();
+                break;
+            case 'type':
+                aVal = (a.procedureCategory || 'Unknown').toLowerCase();
+                bVal = (b.procedureCategory || 'Unknown').toLowerCase();
+                break;
+            case 'outcome':
+                aVal = (a.outcome?.residualSymptoms || 'Unknown').toLowerCase();
+                bVal = (b.outcome?.residualSymptoms || 'Unknown').toLowerCase();
+                break;
+            default:
+                return 0;
+        }
+        
+        if (aVal < bVal) return state.direction === 'asc' ? -1 : 1;
+        if (aVal > bVal) return state.direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+
     const dashboard = document.getElementById('playerDashboard');
     dashboard.innerHTML = `
     <div class="card mb-3">
         <div class="card-body">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h4>${player.name} <span class="badge bg-secondary">${player.pos}</span></h4>
-            <button class="btn btn-sm btn-outline-secondary" onclick="openEditFactsModal(${player.id})">
-            <i class="bi bi-pencil me-1" style=display:none></i> Edit Facts
+            <button class="btn btn-sm btn-outline-secondary d-none" onclick="openEditFactsModal(${player.id})">
+                <i class="bi bi-pencil me-1"></i> Edit Facts
             </button>
+
         </div>
         <div class="row">
             <div class="col-md-4 text-center">
@@ -828,9 +904,25 @@ function renderPlayerDashboard(playerId) {
         <div class="card-body">
         <h6>Injuries</h6>
         <table class="table table-sm table-striped">
-            <thead><tr><th>Injury</th><th>Body Region</th><th>Date</th><th>Severity</th><th>Status</th></tr></thead>
+            <thead><tr>
+                <th class="sortable-header" onclick="sortPlayerTable(${playerId}, 'injuries', 'injury')" style="cursor: pointer;">
+                    Injury ${player.sortState.injuries.column === 'injury' ? (player.sortState.injuries.direction === 'asc' ? '▲' : '▼') : ''}
+                </th>
+                <th class="sortable-header" onclick="sortPlayerTable(${playerId}, 'injuries', 'bodyRegion')" style="cursor: pointer;">
+                    Body Region ${player.sortState.injuries.column === 'bodyRegion' ? (player.sortState.injuries.direction === 'asc' ? '▲' : '▼') : ''}
+                </th>
+                <th class="sortable-header" onclick="sortPlayerTable(${playerId}, 'injuries', 'date')" style="cursor: pointer;">
+                    Date ${player.sortState.injuries.column === 'date' ? (player.sortState.injuries.direction === 'asc' ? '▲' : '▼') : ''}
+                </th>
+                <th class="sortable-header" onclick="sortPlayerTable(${playerId}, 'injuries', 'severity')" style="cursor: pointer;">
+                    Severity ${player.sortState.injuries.column === 'severity' ? (player.sortState.injuries.direction === 'asc' ? '▲' : '▼') : ''}
+                </th>
+                <th class="sortable-header" onclick="sortPlayerTable(${playerId}, 'injuries', 'status')" style="cursor: pointer;">
+                    Status ${player.sortState.injuries.column === 'status' ? (player.sortState.injuries.direction === 'asc' ? '▲' : '▼') : ''}
+                </th>
+            </tr></thead>
             <tbody>
-            ${(player.facts.injuries || []).map((inj, i) => `
+            ${sortedInjuries.map((inj, i) => `
                 <tr>
                 <td>${inj.injuryName || 'Unknown'}</td>
                 <td>${inj.bodyRegion || 'Unknown'} ${inj.side !== 'NA' ? `(${inj.side})` : ''}</td>
@@ -844,9 +936,25 @@ function renderPlayerDashboard(playerId) {
 
         <h6 class="mt-3">Surgeries / Procedures</h6>
         <table class="table table-sm table-striped">
-            <thead><tr><th>Procedure</th><th>Body Region</th><th>Date</th><th>Type</th><th>Outcome</th></tr></thead>
+            <thead><tr>
+                <th class="sortable-header" onclick="sortPlayerTable(${playerId}, 'surgeries', 'procedure')" style="cursor: pointer;">
+                    Procedure ${player.sortState.surgeries.column === 'procedure' ? (player.sortState.surgeries.direction === 'asc' ? '▲' : '▼') : ''}
+                </th>
+                <th class="sortable-header" onclick="sortPlayerTable(${playerId}, 'surgeries', 'bodyRegion')" style="cursor: pointer;">
+                    Body Region ${player.sortState.surgeries.column === 'bodyRegion' ? (player.sortState.surgeries.direction === 'asc' ? '▲' : '▼') : ''}
+                </th>
+                <th class="sortable-header" onclick="sortPlayerTable(${playerId}, 'surgeries', 'date')" style="cursor: pointer;">
+                    Date ${player.sortState.surgeries.column === 'date' ? (player.sortState.surgeries.direction === 'asc' ? '▲' : '▼') : ''}
+                </th>
+                <th class="sortable-header" onclick="sortPlayerTable(${playerId}, 'surgeries', 'type')" style="cursor: pointer;">
+                    Type ${player.sortState.surgeries.column === 'type' ? (player.sortState.surgeries.direction === 'asc' ? '▲' : '▼') : ''}
+                </th>
+                <th class="sortable-header" onclick="sortPlayerTable(${playerId}, 'surgeries', 'outcome')" style="cursor: pointer;">
+                    Outcome ${player.sortState.surgeries.column === 'outcome' ? (player.sortState.surgeries.direction === 'asc' ? '▲' : '▼') : ''}
+                </th>
+            </tr></thead>
             <tbody>
-            ${(player.facts.surgeries || []).map(surg => `
+            ${sortedSurgeries.map(surg => `
                 <tr>
                 <td>${surg.procedure || 'Unknown'}</td>
                 <td>${surg.bodyRegion || 'Unknown'} ${surg.side !== 'NA' ? `(${surg.side})` : ''}</td>
@@ -931,17 +1039,112 @@ function renderPlayerDashboard(playerId) {
     <div class="card mb-3">
         <div class="card-header"><h5>Medical Timeline</h5></div>
         <div class="card-body">
-        ${(player.facts.timeline || []).length > 0 ? 
-            player.facts.timeline.map(t => `
-                <div class="timeline-item">
-                    <strong>${t.year || 'N/A'}</strong>: ${t.event || 'No details'}
+        ${(() => {
+            // Build comprehensive timeline from injuries, surgeries, and missed games
+            const timelineEvents = [];
+            
+            // Add injuries
+            (player.facts.injuries || []).forEach(inj => {
+                if (inj.date) {
+                    timelineEvents.push({
+                        date: inj.date,
+                        type: 'injury',
+                        icon: 'bi-bandaid-fill',
+                        color: 'danger',
+                        title: inj.injuryName || 'Injury',
+                        details: `${inj.bodyRegion || 'Unknown'} ${inj.side !== 'NA' ? `(${inj.side})` : ''} - ${inj.severity || 'Unknown'} ${inj.type || ''}`,
+                        missedGames: inj.timeLost?.missedGames || 0
+                    });
+                }
+            });
+            
+            // Add surgeries
+            (player.facts.surgeries || []).forEach(surg => {
+                if (surg.date) {
+                    timelineEvents.push({
+                        date: surg.date,
+                        type: 'surgery',
+                        icon: 'bi-scissors',
+                        color: 'primary',
+                        title: surg.procedure || 'Surgery',
+                        details: `${surg.bodyRegion || 'Unknown'} ${surg.side !== 'NA' ? `(${surg.side})` : ''} - ${surg.procedureCategory || 'Unknown'}`,
+                        outcome: surg.outcome?.residualSymptoms || 'Unknown'
+                    });
+                }
+            });
+            
+            // Add missed games by season
+            (player.facts.availability?.missedGamesBySeason || []).forEach(season => {
+                if (season.missedGames > 0) {
+                    timelineEvents.push({
+                        date: `${season.season}-09-01`, // Approximate season start
+                        type: 'missed',
+                        icon: 'bi-calendar-x',
+                        color: 'warning',
+                        title: `${season.season} Season`,
+                        details: `Missed ${season.missedGames} game(s)`,
+                        reason: season.reason || 'Not specified'
+                    });
+                }
+            });
+            
+            // Sort by date (most recent first)
+            timelineEvents.sort((a, b) => new Date(b.date) - new Date(a.date));
+            
+            if (timelineEvents.length === 0) {
+                return '<p class="text-muted">No timeline data available</p>';
+            }
+            
+            return `
+                <div class="timeline">
+                    ${timelineEvents.map(event => `
+                        <div class="timeline-item mb-3 pb-3 border-bottom">
+                            <div class="d-flex align-items-start">
+                                <div class="me-3">
+                                    <i class="bi ${event.icon} text-${event.color} fs-4"></i>
+                                </div>
+                                <div class="flex-grow-1">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div>
+                                            <h6 class="mb-1">
+                                                <span class="badge bg-${event.color} me-2">${event.type.toUpperCase()}</span>
+                                                ${event.title}
+                                            </h6>
+                                            <p class="mb-1 text-muted small">${formatDate(event.date)}</p>
+                                            <p class="mb-1">${event.details}</p>
+                                            ${event.missedGames ? `<small class="text-danger"><i class="bi bi-exclamation-circle me-1"></i>Missed ${event.missedGames} game(s)</small>` : ''}
+                                            ${event.reason ? `<small class="text-muted d-block">Reason: ${event.reason}</small>` : ''}
+                                            ${event.outcome ? `<small class="text-muted d-block">Outcome: ${event.outcome}</small>` : ''}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
                 </div>
-            `).join('') 
-            : '<p class="text-muted">No timeline data available</p>'
-        }
+            `;
+        })()}
         </div>
     </div>
     `;
+}
+
+function sortPlayerTable(playerId, tableType, column) {
+    const player = players.find(p => p.id === playerId);
+    if (!player || !player.sortState) return;
+    
+    const state = player.sortState[tableType];
+    
+    // Toggle direction if same column, otherwise set to descending
+    if (state.column === column) {
+        state.direction = state.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        state.column = column;
+        state.direction = 'desc';
+    }
+    
+    // Re-render the dashboard
+    renderPlayerDashboard(playerId);
 }
 
 function openEditFactsModal(playerId) {
@@ -1119,7 +1322,6 @@ document.getElementById('exportJSON').addEventListener('click', (e) => {
         const flags = p.facts.flags || {};
         return {
             name: p.name,
-            position: p.pos,
             draftYear: p.draftYear,
             surgeries: counts.surgeriesTotal || 0,
             concussionHistory: (counts.concussionsTotal || 0) > 0,
