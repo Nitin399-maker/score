@@ -26,15 +26,19 @@ function clamp(x, min, max) {
 }
 
 function monthsBetween(dateStrA, dateStrB) {
+    if (!dateStrA || !dateStrB) return 0;
     const a = new Date(dateStrA);
     const b = new Date(dateStrB);
+    if (isNaN(a.getTime()) || isNaN(b.getTime())) return 0;
     const months = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
     return Math.max(0, months);
 }
 
 function decay(monthsAgo, halfLife) {
     if (halfLife <= 0) return 1;
-    return Math.pow(0.5, monthsAgo / halfLife);
+    if (isNaN(monthsAgo) || monthsAgo < 0) return 1;
+    const result = Math.pow(0.5, monthsAgo / halfLife);
+    return isNaN(result) ? 1 : result;
 }
 
 function sevWeight(sev) {
@@ -158,11 +162,27 @@ function imagingChainKey(img) {
 }
 
 function calculateMSI(facts, asOfDateStr) {
+    // Validate input
+    if (!facts || typeof facts !== 'object') {
+        console.warn('Invalid facts object, returning default score');
+        return {
+            msi: 100,
+            breakdown: {
+                orthoPenalty: 0,
+                redFlagPenalty: 0,
+                availabilityPenalty: 0,
+                neuroPenalty: 0,
+                recentBoostMultiplier: 1.0,
+                totalPenalty: 0
+            }
+        };
+    }
+
     const asOf = asOfDateStr || new Date().toISOString().slice(0, 10);
 
-    const injuries = facts?.injuries || [];
-    const surgeries = facts?.surgeries || [];
-    const imgs = facts?.imagingFindings || [];
+    const injuries = Array.isArray(facts?.injuries) ? facts.injuries : [];
+    const surgeries = Array.isArray(facts?.surgeries) ? facts.surgeries : [];
+    const imgs = Array.isArray(facts?.imagingFindings) ? facts.imagingFindings : [];
     const flags = facts?.flags || {};
     const counts = facts?.summaryCounts || {};
     const scoringInputs = facts?.scoringInputs || {};
@@ -336,17 +356,28 @@ function calculateMSI(facts, asOfDateStr) {
 
     const totalPenalty = totalPenaltyBase * (1 + recentBoost);
 
-    const msi = Math.round(clamp(100 - totalPenalty, 0, 100));
+    // Ensure all values are valid numbers
+    const validOrthoPenalty = isNaN(orthoPenalty) ? 0 : orthoPenalty;
+    const validRedFlagPenalty = isNaN(redFlagPenalty) ? 0 : redFlagPenalty;
+    const validAvailabilityPenalty = isNaN(availabilityPenalty) ? 0 : availabilityPenalty;
+    const validRestrictionPenalty = isNaN(restrictionPenalty) ? 0 : restrictionPenalty;
+    const validNeuroPenalty = isNaN(neuroPenalty) ? 0 : neuroPenalty;
+    const validRecentBoost = isNaN(recentBoost) ? 0 : recentBoost;
+    
+    const validTotalPenaltyBase = validOrthoPenalty + validRedFlagPenalty + validAvailabilityPenalty + validRestrictionPenalty + validNeuroPenalty;
+    const validTotalPenalty = validTotalPenaltyBase * (1 + validRecentBoost);
+    
+    const msi = Math.round(clamp(100 - validTotalPenalty, 0, 100));
 
     return {
         msi,
         breakdown: {
-            orthoPenalty: +orthoPenalty.toFixed(1),
-            redFlagPenalty: +redFlagPenalty.toFixed(1),
-            availabilityPenalty: +(availabilityPenalty + restrictionPenalty).toFixed(1),
-            neuroPenalty: +neuroPenalty.toFixed(1),
-            recentBoostMultiplier: +(1 + recentBoost).toFixed(3),
-            totalPenalty: +totalPenalty.toFixed(1)
+            orthoPenalty: +validOrthoPenalty.toFixed(1),
+            redFlagPenalty: +validRedFlagPenalty.toFixed(1),
+            availabilityPenalty: +(validAvailabilityPenalty + validRestrictionPenalty).toFixed(1),
+            neuroPenalty: +validNeuroPenalty.toFixed(1),
+            recentBoostMultiplier: +(1 + validRecentBoost).toFixed(3),
+            totalPenalty: +validTotalPenalty.toFixed(1)
         }
     };
 }
@@ -357,8 +388,13 @@ function calculateScore(facts) {
 }
 
 function getScoreLabel(score) {
-    if (score >= 75) return { label: "Low Risk", class: "score-low", badge: "success" };
-    if (score >= 50) return { label: "Medium Risk", class: "score-medium", badge: "warning" };
+    // Handle invalid scores
+    if (isNaN(score) || score === null || score === undefined) {
+        return { label: "Unknown", class: "score-medium", badge: "secondary" };
+    }
+    const validScore = Math.max(0, Math.min(100, score));
+    if (validScore >= 75) return { label: "Low Risk", class: "score-low", badge: "success" };
+    if (validScore >= 50) return { label: "Medium Risk", class: "score-medium", badge: "warning" };
     return { label: "High Risk", class: "score-high", badge: "danger" };
 }
 
@@ -378,9 +414,37 @@ function getScoreExplanation(breakdown) {
 // Recalculate all scores
 function recalculateScores() {
     players.forEach(p => {
-        const result = calculateMSI(p.facts);
-        p.score = result.msi;
-        p.scoreBreakdown = result.breakdown;
+        try {
+            if (!p.facts) {
+                console.warn(`Player ${p.name} has no facts object, initializing...`);
+                p.facts = {
+                    injuries: [],
+                    surgeries: [],
+                    imagingFindings: [],
+                    flags: {},
+                    summaryCounts: {},
+                    availability: {},
+                    neuro: { concussions: [], cervicalEvents: [] },
+                    scoringInputs: {},
+                    timeline: []
+                };
+            }
+            const result = calculateMSI(p.facts);
+            p.score = isNaN(result.msi) ? 100 : result.msi;
+            p.scoreBreakdown = result.breakdown;
+            console.log(`Score calculated for ${p.name}: ${p.score}`, result.breakdown);
+        } catch (error) {
+            console.error(`Error calculating score for ${p.name}:`, error);
+            p.score = 100;
+            p.scoreBreakdown = {
+                orthoPenalty: 0,
+                redFlagPenalty: 0,
+                availabilityPenalty: 0,
+                neuroPenalty: 0,
+                recentBoostMultiplier: 1.0,
+                totalPenalty: 0
+            };
+        }
     });
 }
 
@@ -705,6 +769,7 @@ document.getElementById('uploadFilesBtn').addEventListener('click', async () => 
             player = {
                 id: players.length + 1,
                 name: playerName,
+                pos: analysis.player?.position || 'Unknown',
                 draftYear: analysis.player?.draftYear || 2022,
                 handedness: analysis.player?.handedness || 'Unknown',
                 documents: [],
@@ -778,7 +843,34 @@ document.getElementById('playerSelector').addEventListener('change', (e) => {
 function renderPlayerDashboard(playerId) {
     const player = players.find(p => p.id === playerId);
     
-    console.log('Rendering dashboard for:', player.name, 'Score:', player.score);
+    if (!player) {
+        console.error('Player not found:', playerId);
+        return;
+    }
+    
+    // Ensure player has valid facts and score
+    if (!player.facts) {
+        player.facts = {
+            injuries: [],
+            surgeries: [],
+            imagingFindings: [],
+            flags: {},
+            summaryCounts: {},
+            availability: {},
+            neuro: { concussions: [], cervicalEvents: [] },
+            scoringInputs: {},
+            timeline: []
+        };
+    }
+    
+    // Recalculate score if missing or invalid
+    if (player.score === undefined || player.score === null || isNaN(player.score)) {
+        const result = calculateMSI(player.facts);
+        player.score = result.msi;
+        player.scoreBreakdown = result.breakdown;
+    }
+    
+    console.log('Rendering dashboard for:', player.name, 'Score:', player.score, 'Breakdown:', player.scoreBreakdown);
     
     const scoreInfo = getScoreLabel(player.score);
     const explanation = getScoreExplanation(player.scoreBreakdown);
@@ -1263,9 +1355,16 @@ function renderCompareTable() {
 
     const selected = players.filter(p => selectedComparePlayers.has(p.id));
     selected.forEach(p => {
+        // Ensure score is valid
+        if (p.score === undefined || p.score === null || isNaN(p.score)) {
+            const result = calculateMSI(p.facts || {});
+            p.score = result.msi;
+            p.scoreBreakdown = result.breakdown;
+        }
+        
         const scoreInfo = getScoreLabel(p.score);
-        const counts = p.facts.summaryCounts || {};
-        const flags = p.facts.flags || {};
+        const counts = p.facts?.summaryCounts || {};
+        const flags = p.facts?.flags || {};
         
         const row = document.createElement('tr');
         row.innerHTML = `
@@ -1283,7 +1382,7 @@ function renderCompareTable() {
             ${!flags.cartilageDegeneration && !flags.looseBodies && !flags.osteoarthritisOrArthrosis && !(counts.cervicalNeurologicEventsTotal > 0) ? '<span class="text-muted">None</span>' : ''}
             </td>
             <td>${counts.missedGamesTotal || 0}</td>
-            <td><span class="badge bg-${scoreInfo.badge} fs-6">${p.score}</span></td>
+            <td><span class="badge bg-${scoreInfo.badge} fs-6">${isNaN(p.score) ? 'N/A' : p.score}</span></td>
         `;
         tbody.appendChild(row);
     });
