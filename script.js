@@ -1,7 +1,16 @@
+
+// ========== IMPORTS ==========
+import { openaiConfig } from "bootstrap-llm-provider";
+import { bootstrapAlert } from "bootstrap-alert";
+
 // ========== DATA MODEL ==========
 let players = [];
 let currentPlayerView = null;
 let selectedComparePlayers = new Set();
+
+// ========== LLM CONFIGURATION ==========
+let provider = null;
+let currentModel = "anthropic/claude-sonnet-4.5";
 
 // ========== UTILITY FUNCTIONS ==========
 function formatDate(dateStr) {
@@ -478,13 +487,31 @@ async function extractTextFromTXT(file) {
 }
 
 // ========== LLM INTEGRATION ==========
+async function initLLM(show = false) {
+    try {
+        const cfg = await openaiConfig({
+            title: "LLM Configuration for Medical Document Analysis",
+            defaultBaseUrls: ["https://llmfoundry.straive.com/openrouter/v1", "https://api.openai.com/v1", "https://openrouter.ai/api/v1"],
+            show,
+        });
+        provider = { baseUrl: cfg.baseUrl, apiKey: cfg.apiKey };
+    } catch (e) {
+        bootstrapAlert({ body: `Failed to configure LLM: ${e.message}`, color: "danger" });
+        throw e;
+    }
+}
+
 async function analyzeMedicalDocuments(documentsData, providedPlayerName = '') {
-    const apiKey = document.getElementById('apiKey').value.trim();
-    
-    if (!apiKey) {
-        throw new Error('Please enter your OpenAI API key');
+    if (!provider) {
+        await initLLM();
+        if (!provider) {
+            throw new Error('LLM not configured');
+        }
     }
 
+    // Get system prompt from textarea
+    const systemPrompt = document.getElementById('system-prompt').value.trim();
+    
     // Combine all document texts
     const combinedDocuments = documentsData.map(doc => 
         `--- Document: ${doc.filename} ---\n${doc.text}\n`
@@ -492,7 +519,14 @@ async function analyzeMedicalDocuments(documentsData, providedPlayerName = '') {
 
     const playerNameHint = providedPlayerName ? `Player Name (provided): ${providedPlayerName}` : 'Player Name: Extract from documents';
 
-    const prompt = `You are a medical document analyzer for sports players. Analyze ALL the following medical documents Given by NFL for a single player and extract comprehensive medical information by combining data from all documents.
+    const prompt = `${playerNameHint}
+
+Medical Documents:
+${combinedDocuments}
+
+Analyze ALL documents above and extract comprehensive information. Combine and merge data from all documents to create a complete medical profile.
+
+Extract and return ONLY a valid JSON object with the following structure (no markdown, no code blocks, just raw JSON):
 
 ${playerNameHint}
 
@@ -664,18 +698,18 @@ Important:
 - Set flags to true ONLY when there is clear evidence in the imaging findings or medical history`;
 
     try {
-        const response = await fetch('https://llmfoundry.straivedemo.com/openrouter/v1/chat/completions', {
+        const response = await fetch(`${provider.baseUrl}/chat/completions`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
+                'Authorization': `Bearer ${provider.apiKey}`
             },
             body: JSON.stringify({
-                model: 'anthropic/claude-sonnet-4.5',
+                model: currentModel,
                 messages: [
                     {
                         role: 'system',
-                        content: 'You are a medical document analyzer. Always respond with valid JSON only, no markdown formatting. Analyze multiple documents and combine the information into a single comprehensive medical profile.'
+                        content: systemPrompt
                     },
                     {
                         role: 'user',
@@ -721,16 +755,9 @@ function inferDocType(filename) {
 // ========== UPLOAD & PROCESS ==========
 document.getElementById('uploadFilesBtn').addEventListener('click', async () => {
     const files = document.getElementById('fileInput').files;
-    const apiKey = document.getElementById('apiKey').value.trim();
-    const providedPlayerName = document.getElementById('playerNameInput').value.trim();
     
     if (files.length === 0) {
         alert('Please select files to upload.');
-        return;
-    }
-    
-    if (!apiKey) {
-        alert('Please enter your OpenAI API key.');
         return;
     }
 
@@ -766,13 +793,13 @@ document.getElementById('uploadFilesBtn').addEventListener('click', async () => 
         progressText.textContent = `Analyzing ${files.length} document(s) with AI...`;
         progressBar.style.width = '60%';
         
-        const analysis = await analyzeMedicalDocuments(documentsData, providedPlayerName);
+        const analysis = await analyzeMedicalDocuments(documentsData, '');
 
         // Step 3: Create or update player
         progressText.textContent = 'Creating player profile...';
         progressBar.style.width = '90%';
         
-        const playerName = analysis.player?.name || providedPlayerName || 'Unknown Player';
+        const playerName = analysis.player?.name || 'Unknown Player';
         let player = players.find(p => p.name === playerName);
 
         if (!player) {
@@ -837,7 +864,6 @@ document.getElementById('uploadFilesBtn').addEventListener('click', async () => 
         renderPlayerSelector();
         renderCompareCheckboxes();
         document.getElementById('fileInput').value = '';
-        document.getElementById('playerNameInput').value = '';
         
         progressText.textContent = 'Analysis complete!';
         progressBar.style.width = '100%';
@@ -1070,7 +1096,7 @@ function renderPlayerDashboard(playerId) {
                     ${img.modality || 'Imaging'} - ${img.bodyRegion || 'Unknown'} (${formatDate(img.date)})
                 </button>
                 </h2>
-                <div id="img${i}" class="accordion-collapse collapse" data-bs-parent="#imagingAccordion">
+                <div id="img${i}" class="accordion-collapse collapse">
                 <div class="accordion-body">
                     <strong>Modality:</strong> ${img.modality || 'Unknown'}<br>
                     <strong>Body Region:</strong> ${img.bodyRegion || 'Unknown'} ${img.side !== 'NA' ? `(${img.side})` : ''}<br>
@@ -1570,6 +1596,12 @@ function showToast(message, type = 'success') {
     document.body.appendChild(toastContainer);
     setTimeout(() => toastContainer.remove(), 5000);
 }
+
+// ========== EVENT LISTENERS ==========
+document.getElementById('config-btn').addEventListener('click', () => initLLM(true));
+document.getElementById('model-select').addEventListener('change', (e) => {
+    currentModel = e.target.value;
+});
 
 // ========== INIT ==========
 renderPlayerSelector();
