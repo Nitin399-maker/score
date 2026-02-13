@@ -417,7 +417,7 @@ function getScoreExplanation(breakdown) {
     if (breakdown.neuroPenalty > 0) deductions.push({ reason: "Neurological concerns", value: breakdown.neuroPenalty });
     
     deductions.sort((a, b) => b.value - a.value);
-    return deductions.slice(0, 3);
+    return deductions.slice(0, 4);
 }
 
 // Recalculate all scores
