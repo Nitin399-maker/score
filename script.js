@@ -1521,62 +1521,173 @@ if (typeof document !== 'undefined') {
     });
 }
 
-// Export
-document.getElementById('exportJSON').addEventListener('click', (e) => {
+// Export to PDF
+document.getElementById('exportPDF').addEventListener('click', (e) => {
     e.preventDefault();
     const selected = players.filter(p => selectedComparePlayers.has(p.id));
-    const data = selected.map(p => {
-        const counts = p.facts.summaryCounts || {};
-        const flags = p.facts.flags || {};
-        return {
-            name: p.name,
-            draftYear: p.draftYear,
-            surgeries: counts.surgeriesTotal || 0,
-            concussionHistory: (counts.concussionsTotal || 0) > 0,
-            recurringInjuries: counts.recurrenceTotal || 0,
-            majorImagingFlags: [
-                flags.cartilageDegeneration ? 'Cartilage' : null,
-                flags.looseBodies ? 'Loose Bodies' : null,
-                flags.osteoarthritisOrArthrosis ? 'Arthritis' : null,
-                (counts.cervicalNeurologicEventsTotal || 0) > 0 ? 'Cervical' : null
-            ].filter(Boolean),
-            missedGames: counts.missedGamesTotal || 0,
-            medicalScore: p.score,
-            scoreBreakdown: p.scoreBreakdown
-        };
-    });
-    downloadFile('comparison.json', JSON.stringify(data, null, 2));
-});
+    
+    if (selected.length === 0) {
+        showToast('Please select at least one player to export', 'warning');
+        return;
+    }
 
-document.getElementById('exportCSV').addEventListener('click', (e) => {
-    e.preventDefault();
-    const selected = players.filter(p => selectedComparePlayers.has(p.id));
-    let csv = 'Name,Draft Year,Surgeries,Concussion History,Recurring Injuries,Major Imaging Flags,Missed Games,Medical Score\n';
-    selected.forEach(p => {
-        const counts = p.facts.summaryCounts || {};
-        const flags = p.facts.flags || {};
-        const imagingFlags = [];
-        if (flags.cartilageDegeneration) imagingFlags.push('Cartilage');
-        if (flags.looseBodies) imagingFlags.push('Loose Bodies');
-        if (flags.osteoarthritisOrArthrosis) imagingFlags.push('Arthritis');
-        if (flags.fractureNonunionOrDelayedUnion) imagingFlags.push('Nonunion');
-        if (flags.avascularNecrosisConcern) imagingFlags.push('AVN');
-        if ((counts.cervicalNeurologicEventsTotal || 0) > 0) imagingFlags.push('Cervical');
-        const flagsList = imagingFlags.join('; ');
-        csv += `${p.name},${p.draftYear || 'N/A'},${counts.surgeriesTotal || 0},${(counts.concussionsTotal || 0) > 0 ? 'Yes' : 'No'},${counts.recurrenceTotal || 0},"${flagsList}",${counts.missedGamesTotal || 0},${p.score}\n`;
-    });
-    downloadFile('comparison.csv', csv);
+    try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('l', 'mm', 'a4'); // landscape orientation
+        
+        // Add title
+        doc.setFontSize(16);
+        doc.setTextColor(40);
+        doc.text('Player Medical Comparison Report', 14, 15);
+        
+        // Add date
+        doc.setFontSize(10);
+        doc.setTextColor(100);
+        doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 22);
+        
+        // Prepare table data
+        const tableData = selected.map(p => {
+            const counts = p.facts.summaryCounts || {};
+            const flags = p.facts.flags || {};
+            const scoreInfo = getScoreLabel(p.score);
+            
+            // Build imaging flags list
+            const imagingFlags = [];
+            if (flags.cartilageDegeneration) imagingFlags.push('Cartilage');
+            if (flags.looseBodies) imagingFlags.push('Loose Bodies');
+            if (flags.osteoarthritisOrArthrosis) imagingFlags.push('Arthritis');
+            if (flags.fractureNonunionOrDelayedUnion) imagingFlags.push('Nonunion');
+            if (flags.avascularNecrosisConcern) imagingFlags.push('AVN');
+            if (flags.hardwareFailureOrBrokenImplant) imagingFlags.push('Hardware');
+            if ((counts.cervicalNeurologicEventsTotal || 0) > 0) imagingFlags.push('Cervical');
+            
+            return [
+                p.name,
+                p.draftYear || 'N/A',
+                counts.surgeriesTotal || 0,
+                (counts.concussionsTotal || 0) > 0 ? 'Yes' : 'No',
+                counts.recurrenceTotal || 0,
+                imagingFlags.length > 0 ? imagingFlags.join(', ') : 'None',
+                counts.missedGamesTotal || 0,
+                p.score,
+                scoreInfo.label
+            ];
+        });
+        
+        // Define table columns
+        const columns = [
+            { header: 'Player', dataKey: 'player' },
+            { header: 'Draft Year', dataKey: 'draftYear' },
+            { header: 'Surgeries', dataKey: 'surgeries' },
+            { header: 'Concussion', dataKey: 'concussion' },
+            { header: 'Recurring', dataKey: 'recurring' },
+            { header: 'Imaging Flags', dataKey: 'flags' },
+            { header: 'Missed Games', dataKey: 'missedGames' },
+            { header: 'Score', dataKey: 'score' },
+            { header: 'Risk Level', dataKey: 'risk' }
+        ];
+        
+        // Generate table with autoTable
+        doc.autoTable({
+            startY: 28,
+            head: [columns.map(col => col.header)],
+            body: tableData,
+            theme: 'grid',
+            headStyles: {
+                fillColor: [33, 37, 41],
+                textColor: [255, 255, 255],
+                fontStyle: 'bold',
+                halign: 'center'
+            },
+            bodyStyles: {
+                fontSize: 9,
+                cellPadding: 3
+            },
+            columnStyles: {
+                0: { cellWidth: 35 }, // Player
+                1: { cellWidth: 20, halign: 'center' }, // Draft Year
+                2: { cellWidth: 20, halign: 'center' }, // Surgeries
+                3: { cellWidth: 20, halign: 'center' }, // Concussion
+                4: { cellWidth: 20, halign: 'center' }, // Recurring
+                5: { cellWidth: 50 }, // Flags
+                6: { cellWidth: 25, halign: 'center' }, // Missed Games
+                7: { cellWidth: 18, halign: 'center' }, // Score
+                8: { cellWidth: 30, halign: 'center' } // Risk Level
+            },
+            didParseCell: function(data) {
+                // Color code the concussion column
+                if (data.column.index === 3 && data.section === 'body') {
+                    if (data.cell.text[0] === 'Yes') {
+                        data.cell.styles.fillColor = [255, 243, 205]; // warning yellow
+                        data.cell.styles.textColor = [0, 0, 0];
+                    } else {
+                        data.cell.styles.fillColor = [212, 237, 218]; // success green
+                        data.cell.styles.textColor = [0, 0, 0];
+                    }
+                }
+                
+                // Color code the score column
+                if (data.column.index === 7 && data.section === 'body') {
+                    const score = parseInt(data.cell.text[0]);
+                    if (score >= 75) {
+                        data.cell.styles.fillColor = [40, 167, 69]; // success green
+                        data.cell.styles.textColor = [255, 255, 255];
+                        data.cell.styles.fontStyle = 'bold';
+                    } else if (score >= 50) {
+                        data.cell.styles.fillColor = [255, 193, 7]; // warning yellow
+                        data.cell.styles.textColor = [0, 0, 0];
+                        data.cell.styles.fontStyle = 'bold';
+                    } else {
+                        data.cell.styles.fillColor = [220, 53, 69]; // danger red
+                        data.cell.styles.textColor = [255, 255, 255];
+                        data.cell.styles.fontStyle = 'bold';
+                    }
+                }
+                
+                // Color code the risk level column
+                if (data.column.index === 8 && data.section === 'body') {
+                    if (data.cell.text[0] === 'Low Risk') {
+                        data.cell.styles.fillColor = [40, 167, 69]; // success green
+                        data.cell.styles.textColor = [255, 255, 255];
+                        data.cell.styles.fontStyle = 'bold';
+                    } else if (data.cell.text[0] === 'Medium Risk') {
+                        data.cell.styles.fillColor = [255, 193, 7]; // warning yellow
+                        data.cell.styles.textColor = [0, 0, 0];
+                        data.cell.styles.fontStyle = 'bold';
+                    } else if (data.cell.text[0] === 'High Risk') {
+                        data.cell.styles.fillColor = [220, 53, 69]; // danger red
+                        data.cell.styles.textColor = [255, 255, 255];
+                        data.cell.styles.fontStyle = 'bold';
+                    }
+                }
+                
+                // Highlight imaging flags if present
+                if (data.column.index === 5 && data.section === 'body') {
+                    if (data.cell.text[0] !== 'None') {
+                        data.cell.styles.fillColor = [248, 215, 218]; // light red
+                        data.cell.styles.textColor = [0, 0, 0];
+                    }
+                }
+            }
+        });
+        
+        // Add footer
+        const pageCount = doc.internal.getNumberOfPages();
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        for (let i = 1; i <= pageCount; i++) {
+            doc.setPage(i);
+            doc.text(`Page ${i} of ${pageCount}`, doc.internal.pageSize.getWidth() - 30, doc.internal.pageSize.getHeight() - 10);
+        }
+        
+        // Save the PDF
+        doc.save('player-comparison.pdf');
+        showToast('PDF exported successfully!');
+    } catch (error) {
+        console.error('PDF Export Error:', error);
+        showToast('Error exporting PDF: ' + error.message, 'danger');
+    }
 });
-
-function downloadFile(filename, content) {
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-}
 
 // ========== TOAST ==========
 function showToast(message, type = 'success') {
